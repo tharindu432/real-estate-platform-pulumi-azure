@@ -28,6 +28,32 @@ const mediaContainer = new azure.storage.BlobContainer("media-container", {
     publicAccess: azure.storage.PublicAccess.Blob,
 });
 
+// azure key vault
+const clientConfig = azure.authorization.getClientConfigOutput();
+
+const keyVault = new azure.keyvault.Vault("webco-kv", {
+    vaultName: "webco-kv",
+    resourceGroupName: resourceGroup.name,
+    location: resourceGroup.location,
+    properties: {
+        tenantId: clientConfig.apply(config => config.tenantId),
+        sku: {
+            family: "A",
+            name: azure.keyvault.SkuName.Standard,
+        },
+        accessPolicies: [{
+            tenantId: clientConfig.apply(config => config.tenantId),
+            objectId: clientConfig.apply(config => config.objectId),
+            permissions: {
+                secrets: ["get", "list", "set", "delete"],
+            },
+        }],
+
+        enableSoftDelete: true,
+        softDeleteRetentionInDays: 90,
+    },
+});
+
 
 
 // Export the storage account name
