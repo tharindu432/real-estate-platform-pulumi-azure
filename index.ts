@@ -20,5 +20,15 @@ const storageAccount = new azure.storage.StorageAccount("webco-sa", {
     kind: azure.storage.Kind.StorageV2,
 });
 
+//create media container
+const mediaContainer = new azure.storage.BlobContainer("media-container", {
+    accountName: storageAccount.name,
+    containerName: "media-assets",
+    resourceGroupName: resourceGroup.name,
+    publicAccess: azure.storage.PublicAccess.Blob,
+});
+
+
+
 // Export the storage account name
 export const storageAccountName = storageAccount.name;
