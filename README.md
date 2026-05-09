@@ -44,7 +44,7 @@ To meet a 99.9% availability SLA I would enable zone-redundant high availability
 
 ## If I Had 1 Extra Day
 
-**Infrastructure**: I would add a separate staging environment using Pulumi stacks (`pulumi stack init staging`) so the production and staging environments are identically configured but isolated. I would also add Azure Application Gateway with Web Application Firewall (WAF) in front of the Container App — right now the app is publicly accessible without any layer 7 protection.
+**Infrastructure**: I would add a separate staging environment using Pulumi stacks (`pulumi stack init staging`) so the production and staging environments are identically configured but isolated. 
 
 **CI/CD Pipeline**: I would add a smoke test step after deployment — a simple curl to the health endpoint that fails the pipeline and triggers automatic rollback if the new container doesn't respond within 30 seconds. I would also separate the pipeline into two workflows: one for pull request validation (lint, type check, test) and one for deployment (only on merge to main).
 
