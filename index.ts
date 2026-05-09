@@ -54,6 +54,61 @@ const keyVault = new azure.keyvault.Vault("webco-kv", {
     },
 });
 
+// DB connection string secret in Key Vault
+const dbConnectionStringSecret = new azure.keyvault.Secret("db-connection-string", {
+    secretName: "db-connection-string",
+    vaultName: keyVault.name,
+    resourceGroupName: resourceGroup.name,
+    properties: {
+        value: pulumi.secret("Server=webco-db;Database=webco;User Id=admin;Password=your_password;"),
+        contentType: "text/plain",
+    },
+});
+
+// Directus admin user secret in Key Vault
+const directusAdminUserSecret = new azure.keyvault.Secret("directus-admin-user", {
+    secretName: "directus-admin-user",
+    vaultName: keyVault.name,
+    resourceGroupName: resourceGroup.name,
+    properties: {
+        value: pulumi.secret("admin"),
+        contentType: "text/plain",
+    },
+});
+
+//Postgres DB
+const postgresServer = new azure.dbforpostgresql.Server("cms-db", {
+    serverName: "webco-cms-db",
+    resourceGroupName: resourceGroup.name,
+    location: resourceGroup.location,
+    version: "15",
+    administratorLogin: "admin",
+    administratorLoginPassword: pulumi.secret("your_password"),
+    sku: {
+        name: "Standard_B1ms",
+        tier : azure.dbforpostgresql.SkuTier.Burstable,
+    },
+    storage: {
+        storageSizeGB: 32,
+    },
+    backup: {
+        backupRetentionDays: 7,
+        geoRedundantBackup: azure.dbforpostgresql.GeoRedundantBackup.Disabled,
+    },
+});
+
+//create the cms-db
+const cmsDatabase = new azure.dbforpostgresql.Database("cms-db", {
+    databaseName: "cms-db",
+    resourceGroupName: resourceGroup.name,
+    serverName: postgresServer.name,
+    charset: "UTF8",
+    collation: "English_United States.1252",
+
+});
+
+
+
 
 
 // Export the storage account name
