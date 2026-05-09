@@ -1,85 +1,51 @@
- # Azure Native TypeScript Pulumi Template
+# Webco Platform — Infrastructure & Migration Assessment
 
- This template provides a minimal, ready-to-go Pulumi program for deploying Azure resources using the Azure Native provider in TypeScript. It establishes a basic infrastructure stack that you can use as a foundation for more complex deployments.
+## What I Built
 
- ## When to Use This Template
+This repo contains the full infrastructure and migration setup for the Webco real estate platform migrating to Azure. It covers:
 
- - You need a quick boilerplate for Azure Native deployments with Pulumi and TypeScript
- - You want to create a Resource Group and Storage Account as a starting point
- - You’re exploring Pulumi’s Azure Native SDK and TypeScript support
+- **Task 1**: Pulumi IaC (TypeScript) provisioning Azure Container Apps, PostgreSQL, Key Vault, and Blob Storage
+- **Task 2**: Docker Compose for local Directus CMS development + production deployment notes
+- **Task 3**: TypeScript migration script moving property listings from Sanity CMS to Directus
+- **Task 4**: GitHub Actions CI/CD pipeline + DNS cutover risk analysis
 
- ## Prerequisites
+## Assumptions Made
 
- - An active Azure subscription
- - Node.js (LTS) installed
- - A Pulumi account and CLI already installed and configured
- - Azure credentials available (e.g., via `az login` or environment variables)
+- The platform is Australian-facing, so `australiaeast` (Sydney) is the chosen Azure region for lowest latency
+- Directus is used as the headless CMS with PostgreSQL as its data store
+- The assessment environment is development/staging — some production-grade settings (geo-redundant backup, high availability) are noted but not enabled to save cost
+- Secrets are never hardcoded — all sensitive values use `pulumi.secret()` as placeholders to be injected by a CI/CD pipeline
 
- ## Usage
+---
 
- Scaffold a new project from the Pulumi registry template:
- ```bash
- pulumi new azure-typescript
- ```
+## Design Decisions & Trade-offs
 
- Follow the prompts to:
- 1. Name your project and stack
- 2. (Optionally) override the default Azure location
+### Why Azure Container Apps over AKS (Kubernetes)?
 
- Once the project is created:
- ```bash
- cd <your-project-name>
- pulumi config set azure-native:location <your-region>
- pulumi up
- ```
+Container Apps is the right choice for hosting a single CMS service like Directus. It abstracts away cluster management entirely — there are no nodes to patch, no control plane to maintain, and no YAML manifests to manage. Scaling is handled automatically based on HTTP traffic. AKS would be the better choice if the platform grew into many microservices that needed fine-grained networking control, custom ingress controllers, or workloads like GPU-based image processing that require node-level configuration. For a CMS at this scale, AKS adds operational overhead without meaningful benefit.
 
- ## Project Layout
+### Why Managed PostgreSQL over a Self-Hosted Database on a VM?
 
- ```
- .
- ├── Pulumi.yaml       # Project metadata & template configuration
- ├── index.ts          # Main Pulumi program defining resources
- ├── package.json      # Node.js dependencies and project metadata
- └── tsconfig.json     # TypeScript compiler options
- ```
+Azure Database for PostgreSQL Flexible Server handles automated backups (point-in-time recovery up to 35 days), security patching, and optional zone-redundant high availability with automatic failover. Running PostgreSQL on a VM would require a DevOps engineer to manage all of this manually — backup scripts, patch schedules, monitoring, and failover logic. The managed service costs slightly more per compute hour but eliminates an entire category of operational risk, which is worth it for a production platform where data loss is unacceptable.
 
- ## Configuration
+### How Secrets Are Handled
 
- Pulumi configuration lets you customize deployment parameters.
+No real credentials exist anywhere in this codebase. All sensitive values (database passwords, Directus secret keys) are wrapped in `pulumi.secret()`, which marks them as encrypted in Pulumi's state file. In a real deployment, these values would be injected as pipeline variables from a secrets manager (e.g. Azure Key Vault or GitHub Secrets) during the CI/CD run — never hardcoded or committed to source control. The Container App reads secrets at runtime via Key Vault references, so no secret ever lives in plain text in the container configuration.
 
- - **azure-native:location** (string)
-   - Description: Azure region to provision resources in
-   - Default: `WestUS2`
+### Horizontal Scaling Approach
 
- Set a custom location before deployment:
- ```bash
- pulumi config set azure-native:location eastus
- ```
+The Container App is configured with a minimum of 1 replica and a maximum of 5, scaling automatically when concurrent HTTP requests exceed 100. For sustained traffic spikes (e.g. a major property listing launch), this can be pre-scaled by temporarily raising `minReplicas`. The stateless nature of the Directus container (media on Blob Storage, sessions in the database) means new replicas can start and serve traffic immediately without any shared local state.
 
- ## Resources Created
+### What I Would Add for a Production SLA
 
- 1. **Resource Group**: A container for all other resources
- 2. **Storage Account**: A StorageV2 account with Standard_LRS SKU
+To meet a 99.9% availability SLA I would enable zone-redundant high availability on PostgreSQL (automatic failover under 60 seconds), switch Blob Storage from LRS to GRS (geo-redundant), add an Azure Application Gateway with WAF in front of Container Apps for DDoS protection and TLS termination, configure Azure Monitor alerts for error rate and p95 latency thresholds, and set up a staging environment slot to validate deployments before production traffic is switched over.
 
- ## Outputs
+---
 
- After `pulumi up`, the following output is exported:
- - **storageAccountName**: The name of the created Storage Account
+## If I Had 1 Extra Day
 
- Retrieve it with:
- ```bash
- pulumi stack output storageAccountName
- ```
+**Infrastructure**: I would add a separate staging environment using Pulumi stacks (`pulumi stack init staging`) so the production and staging environments are identically configured but isolated. I would also add Azure Application Gateway with Web Application Firewall (WAF) in front of the Container App — right now the app is publicly accessible without any layer 7 protection.
 
- ## Next Steps
+**CI/CD Pipeline**: I would add a smoke test step after deployment — a simple curl to the health endpoint that fails the pipeline and triggers automatic rollback if the new container doesn't respond within 30 seconds. I would also separate the pipeline into two workflows: one for pull request validation (lint, type check, test) and one for deployment (only on merge to main).
 
- - Extend this template by adding more Azure Native resources (e.g., Networking, App Services)
- - Modularize your stack with Pulumi Components for reusable architectures
- - Integrate with CI/CD pipelines (GitHub Actions, Azure DevOps, etc.)
-
- ## Getting Help
-
- If you have questions or run into issues:
- - Explore the Pulumi docs: https://www.pulumi.com/docs/
- - Join the Pulumi Community on Slack: https://pulumi-community.slack.com/
- - File an issue on the Pulumi Azure Native SDK GitHub: https://github.com/pulumi/pulumi-azure-native/issues
+**Security**: I would configure a private VNet (Virtual Network) so the Container App communicates with PostgreSQL over a private internal network rather than the public internet, even with TLS. This is a standard production security baseline and eliminates an entire network attack surface.
